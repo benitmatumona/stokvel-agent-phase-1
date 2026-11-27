@@ -62,7 +62,10 @@ async def extract_group_spec(
     current: GroupSpec,
 ) -> GroupSpec:
     if not GROQ_API_KEY:
-        return fallback_extract(message, current)
+        return GroupSpec.model_validate({
+                **current.model_dump(),
+		**updates,
+})
 
     payload = {
         "model": GROQ_MODEL,
