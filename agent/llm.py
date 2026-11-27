@@ -1,4 +1,6 @@
+
 import json
+import logging
 import re
 from decimal import Decimal
 
@@ -6,6 +8,9 @@ import httpx
 
 from agent.config import GROQ_API_KEY, GROQ_MODEL, GROQ_URL
 from agent.spec import GroupSpec
+
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """
@@ -54,18 +59,22 @@ def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
     if re.search(r"\bhalf\s+a\s+SOL\b", message, re.IGNORECASE):
         updates["contribution_lamports"] = 500_000_000
 
-    return current.model_copy(update=updates)
+    # Merge existing information with newly extracted information.
+    # model_validate ensures that all values are checked.
+    return GroupSpec.model_validate({
+        **current.model_dump(),
+        **updates,
+    })
 
 
 async def extract_group_spec(
     message: str,
     current: GroupSpec,
 ) -> GroupSpec:
+
+    # No API key? Use local extraction.
     if not GROQ_API_KEY:
-        return GroupSpec.model_validate({
-                **current.model_dump(),
-		**updates,
-})
+        return fallback_extract(message, current)
 
     payload = {
         "model": GROQ_MODEL,
@@ -82,29 +91,52 @@ async def extract_group_spec(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            GROQ_URL,
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                GROQ_URL,
+                headers=headers,
+                json=payload,
+            )
 
-    content = response.json()["choices"][0]["message"]["content"]
-    extracted = json.loads(content)
+            response.raise_for_status()
 
-    updates = {
-        key: value
-        for key, value in extracted.items()
-        if key in {
+        content = response.json()["choices"][0]["message"]["content"]
+        extracted = json.loads(content)
+
+        if not isinstance(extracted, dict):
+            raise ValueError("Groq returned an invalid JSON structure")
+
+        allowed_fields = {
             "group_name",
             "contribution_lamports",
             "max_members",
         }
-        and value is not None
-    }
 
-    candidate = current.model_copy(update=updates)
+        updates = {
+            key: value
+            for key, value in extracted.items()
+            if key in allowed_fields and value is not None
+        }
 
-    # Validate the extracted values before accepting them.
-    return GroupSpec.model_validate(candidate.model_dump())
+        # Validate Groq's extracted information.
+        return GroupSpec.model_validate({
+            **current.model_dump(),
+            **updates,
+        })
+
+    except (
+        httpx.HTTPError,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+
+        # Log the failure without exposing credentials.
+        logger.warning(
+            "Groq extraction failed (%s). Using local fallback.",
+            type(exc).__name__,
+        )
+
+        return fallback_extract(message, current)
