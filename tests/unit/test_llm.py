@@ -1,3 +1,9 @@
+import pytest
+
+from agent.llm import extract_group_spec, fallback_extract
+from agent.spec import GroupSpec
+
+
 from agent.llm import fallback_extract
 from agent.spec import GroupSpec
 
@@ -43,3 +49,15 @@ def test_missing_information_is_not_invented():
     )
     assert spec.max_members is None
     assert spec.contribution_lamports is None
+
+@pytest.mark.anyio
+async def test_missing_api_key_uses_fallback(monkeypatch):
+    monkeypatch.setattr("agent.llm.GROQ_API_KEY", None)
+
+    spec = await extract_group_spec(
+        "Create a group with 8 members contributing 0.25 SOL",
+        GroupSpec(),
+    )
+
+    assert spec.max_members == 8
+    assert spec.contribution_lamports == 250_000_000
