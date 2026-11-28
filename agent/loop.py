@@ -140,10 +140,23 @@ async def process_message(
         session.state = SessionState.DRAFTING
         save_session(session)
 
+        got = []
+        if session.spec.group_name:
+            got.append(f"the name {session.spec.group_name}")
+        if session.spec.max_members:
+            got.append(f"{session.spec.max_members} members")
+        if session.spec.contribution_lamports:
+            got.append(f"{format_lamports(session.spec.contribution_lamports)} each")
+        prefix = f"Got it: {', '.join(got)}. " if got else ""
+
         if "stokvel name" in missing:
-            reply = "What would you like to name your stokvel?"
+            reply = prefix + "What would you like to name your stokvel?"
+        elif len(missing) == 2:
+            reply = prefix + "How many members will there be, and how much will each member pay, in SOL?"
+        elif "number of members" in missing:
+            reply = prefix + "How many members will there be?"
         else:
-            reply = f"I still need: {', '.join(missing)}."
+            reply = prefix + "How much will each member pay, in SOL?"
 
         return {
             "session_id": session.session_id,

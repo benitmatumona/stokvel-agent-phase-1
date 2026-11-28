@@ -31,44 +31,80 @@ Rules:
 """
 
 
+NUMBER_WORDS = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+    "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
+    "a dozen": 12, "dozen": 12,
+}
+_NUM = r"(\d+|" + "|".join(sorted((re.escape(w) for w in NUMBER_WORDS), key=len, reverse=True)) + r")"
+_PEOPLE = r"(?:members?|people|persons?|friends|participants|of us)"
+_NAME_END = r"(?=\s+(?:with|for|and|where|that|which|each|every|who)\b|[,.;!?]|$)"
+CHATTER = {
+    "you", "your", "me", "my", "i", "we", "us", "hear", "know", "hello", "hi",
+    "hey", "can", "could", "would", "don't", "dont", "how", "what", "why",
+    "let", "please", "thanks", "thank", "yes", "no", "okay", "ok", "maybe",
+    "again", "instead", "going", "gonna", "want", "need", "like", "test",
+    "testing", "technician",
+}
+
+
+def _to_int(token: str) -> int | None:
+    token = token.lower()
+    return int(token) if token.isdigit() else NUMBER_WORDS.get(token)
+
+
 def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
     updates = {}
 
-    # Extract the group name from common natural-language patterns.
+    # Explicit naming always wins, even over an earlier name.
     name_patterns = [
-        r"\b(?:called|named)\s+(.+?)(?=\s+with\s+\d+\s+members?\b|[,.;]|$)",
-        r"\b(?:group\s+name|name)\s+is\s+(.+?)(?=\s+with\s+\d+\s+members?\b|[,.;]|$)",
+        r"\b(?:call|name)\s+(?:it|the\s+(?:group|stokvel))\s+[\"']?(.+?)[\"']?" + _NAME_END,
+        r"\b(?:called|named)\s+[\"']?(.+?)[\"']?" + _NAME_END,
+        r"\b(?:group\s+name|stokvel\s+name|name)\s+(?:is|should be)\s+[\"']?(.+?)[\"']?" + _NAME_END,
     ]
-
     for pattern in name_patterns:
         name_match = re.search(pattern, message, re.IGNORECASE)
-
         if name_match:
             group_name = name_match.group(1).strip().strip(chr(34) + chr(39))
-
             if group_name:
                 updates["group_name"] = group_name
                 break
 
     member_match = re.search(
-        r"\b(\d+)\s+members?\b",
-        message,
-        re.IGNORECASE,
+        r"\b" + _NUM + r"\s+" + _PEOPLE + r"\b", message, re.IGNORECASE
+    ) or re.search(
+        r"\b(?:for|of)\s+" + _NUM + r"\s+(?:people|persons?|friends)\b",
+        message, re.IGNORECASE,
     )
-
     if member_match:
-        updates["max_members"] = int(member_match.group(1))
+        count = _to_int(member_match.group(1))
+        if count is not None:
+            updates["max_members"] = count
 
     contribution_match = re.search(
         r"(?<![\w.])(-?\d+(?:\.\d+)?)\s*SOL\b",
         message,
         re.IGNORECASE,
     )
+    amount = contribution_match.group(1) if contribution_match else None
 
-    if contribution_match:
-        sol_amount = Decimal(contribution_match.group(1))
-        lamports = sol_amount * Decimal("1000000000")
+    if amount is None:
+        # Spoken amounts often omit the unit: "each contributing 0.01".
+        loose = re.search(
+            r"(?:each|per\s+(?:member|person)|contribut\w*|pay\w*|put(?:ting)?\s+in|deposit\w*)"
+            r"\D{0,25}?(?<![\w.])(\d+(?:\.\d+)?)(?!\s*(?:members?|people|persons?|friends)\b)",
+            message, re.IGNORECASE,
+        ) or re.search(
+            r"(?<![\w.])(\d+\.\d+|\d+)\s+(?:each|per\s+(?:member|person))\b",
+            message, re.IGNORECASE,
+        )
+        if loose:
+            amount = loose.group(1)
 
+    if amount is not None:
+        lamports = Decimal(amount) * Decimal("1000000000")
         if lamports == lamports.to_integral_value():
             updates["contribution_lamports"] = int(lamports)
 
@@ -79,7 +115,7 @@ def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
     if current.group_name is None and "group_name" not in updates:
         is_structured_update = bool(
             re.search(
-                r"\b\d+\s+members?\b|"
+                r"\b\d+\s+members?\b|\b" + _NUM + r"\s+" + _PEOPLE + r"\b|"
                 r"(?<![\w.])-?\d+(?:\.\d+)?\s*SOL\b|"
                 r"\bhalf\s+a\s+SOL\b",
                 message,
@@ -121,10 +157,19 @@ def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
             )
         )
 
+        words = re.findall(r"[a-z0-9']+", normalized_candidate)
+        is_chatter = (
+            candidate.endswith("?")
+            or len(words) > 5
+            or any(w in CHATTER for w in words)
+            or "stokvel" in words and len(words) > 3
+        )
+
         if (
             candidate
-            and len(candidate) <= 60
+            and len(candidate) <= 40
             and not is_structured_update
+            and not is_chatter
             and not looks_like_request
             and normalized_candidate not in ambiguous_responses
         ):

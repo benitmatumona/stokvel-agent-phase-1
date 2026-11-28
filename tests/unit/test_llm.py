@@ -264,3 +264,32 @@ def test_request_sentences_are_not_taken_as_the_group_name():
     for msg in ["I want to start a savings group", "make me a stokvel", "Can you help me?"]:
         assert asyncio.run(extract_group_spec(msg, GroupSpec())).group_name is None
     assert asyncio.run(extract_group_spec("Gogo Club", GroupSpec())).group_name == "Gogo Club"
+
+
+def _fb(msg, spec=None):
+    from agent.llm import fallback_extract
+    from agent.spec import GroupSpec
+    return fallback_extract(msg, spec or GroupSpec())
+
+
+def test_chitchat_is_never_taken_as_a_name():
+    for msg in ["Let me know if you can hear me", "Hi let me know if you can",
+                "I don't know how we're gonna do it", "Technician in South Africa"]:
+        assert _fb(msg).group_name is None
+
+
+def test_number_words_and_unitless_amounts():
+    s = _fb("Four members each contributing 0.01")
+    assert (s.max_members, s.contribution_lamports) == (4, 10_000_000)
+    s = _fb("Six of us, 0.1 each")
+    assert (s.max_members, s.contribution_lamports) == (6, 100_000_000)
+    s = _fb("Twelve people, each pays 0.05 SOL")
+    assert (s.max_members, s.contribution_lamports) == (12, 50_000_000)
+
+
+def test_explicit_naming_can_rename():
+    from agent.spec import GroupSpec
+    s = _fb("call it Family Savings")
+    assert s.group_name == "Family Savings"
+    assert _fb("name it Soweto Savers", s).group_name == "Soweto Savers"
+    assert _fb("A stokvel called Gogo Club for 5 people, each paying 0.2 SOL").group_name == "Gogo Club"
