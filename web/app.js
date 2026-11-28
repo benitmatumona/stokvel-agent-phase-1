@@ -16,6 +16,47 @@ let currentAudio = null;
 let serverVoice = false;
 let stage = "none"; // none | approved | tested | deployed
 
+/* ---------- assistant avatar and interface commands ---------- */
+const avatar = createAvatar($("avatar"), $("av-mouth"));
+
+function currentTheme() { return document.documentElement.dataset.theme || "auto"; }
+
+function applyTheme(name) {
+  if (name === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = name;
+  try { name === "auto" ? localStorage.removeItem("stokvel-theme") : localStorage.setItem("stokvel-theme", name); } catch (_) {}
+  $("themeBtn").textContent = "Theme: " + name;
+}
+
+function nextTheme() {
+  const order = THEMES, i = order.indexOf(currentTheme());
+  return order[(i + 1) % order.length];
+}
+
+function setAvatarVisible(on) {
+  $("avatar").hidden = !on;
+  $("avatarOn").checked = on;
+}
+
+/* Returns the reply text if the sentence was an interface command, else null. */
+function runLocalCommand(text) {
+  const cmd = parseCommand(text);
+  if (!cmd) return null;
+  switch (cmd.type) {
+    case "theme": {
+      const name = cmd.theme === "next" ? nextTheme() : cmd.theme;
+      applyTheme(name); avatar.smile();
+      return name === "auto" ? "Done. I am following your device's theme now." : "Done. Switched to the " + name + " theme.";
+    }
+    case "theme-help": return "I can do light, dark, ocean or sunset. Which one would you like?";
+    case "wave": avatar.wave(); return "Hi there!";
+    case "smile": avatar.smile(); return "Happy to help!";
+    case "hide": setAvatarVisible(false); return "Okay, I will hide. Tick Assistant below to bring me back.";
+    case "show": setAvatarVisible(true); avatar.wave(); return "I'm back!";
+  }
+  return null;
+}
+
 function renderActions() {
   const box = $("actions");
   const cfg = {
@@ -54,6 +95,7 @@ async function runAction() {
       await action("/deploy");
       stage = "deployed"; renderStages("shared");
       await showShare();
+      avatar.celebrate();
       addMessage("agent", "Your stokvel is live on devnet. Share the link below with members.");
     }
     setNote("");
@@ -136,14 +178,24 @@ function resetUi() {
 }
 
 /* ---------- speaking ---------- */
-function stopSpeaking() {
-  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+function cancelPlayback() {
+  if (currentAudio) {
+    const a = currentAudio; currentAudio = null;
+    a.pause(); a.dispatchEvent(new Event("ended"));   // lets a waiting speak() finish
+  }
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 }
 
+function stopSpeaking() { avatar.setSpeaking(false); cancelPlayback(); }
+
 async function speak(text) {
-  if (!els.voiceReplies.checked) return;
-  stopSpeaking();
+  if (!els.voiceReplies.checked) { avatar.smile(); return; }
+  avatar.setSpeaking(true);
+  try { await speakInner(text); } finally { avatar.setSpeaking(false); }
+}
+
+async function speakInner(text) {
+  cancelPlayback();
   if (serverVoice) {
     try {
       const res = await fetch("/tts", {
@@ -177,7 +229,14 @@ async function post(message, withSession) {
 
 async function send(message) {
   if (busy || !message.trim()) return;
-  busy = true; els.send.disabled = true;
+  const local = runLocalCommand(message);
+  if (local) {
+    addMessage("user", message); addMessage("agent", local);
+    await speak(local);
+    if (els.handsFree.checked && SpeechRecognition) startListening();
+    return;
+  }
+  busy = true; els.send.disabled = true; avatar.think(true);
   addMessage("user", message);
   try {
     let res = await post(message, true);
@@ -205,11 +264,44 @@ async function send(message) {
   }
 }
 
+/* ---------- microphone diagnostics ---------- */
+async function micCheck() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const label = (stream.getAudioTracks()[0] || {}).label || "unknown device";
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const an = ctx.createAnalyser();
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    let peak = 0;
+    const end = Date.now() + 2000;
+    while (Date.now() < end) {
+      an.getByteTimeDomainData(buf);
+      for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    stream.getTracks().forEach((t) => t.stop());
+    ctx.close();
+    return { label, peak };
+  } catch (e) { return { error: e.name }; }
+}
+
+function explainNoSpeech() {
+  setNote("Checking your microphone... speak now.");
+  micCheck().then((r) => {
+    if (r.error) setNote("Microphone error: " + r.error + ". Allow the mic in the browser and your system settings.");
+    else if (r.peak < 3) setNote("Chrome is using '" + r.label + "' but it hears silence. Pick another mic in the address bar mic icon, or unmute it in system settings.");
+    else setNote("Your mic works ('" + r.label + "'). Tap Mic, then speak straight away.");
+  });
+}
+
 /* ---------- listening ---------- */
+let recLang = "en-ZA";
 function setMic(on) {
   els.mic.setAttribute("aria-pressed", on ? "true" : "false");
   els.mic.setAttribute("aria-label", on ? "Stop listening" : "Start listening");
   els.mic.textContent = on ? "Listening" : "Mic";
+  avatar.listen(on);
 }
 
 function startListening() {
@@ -221,7 +313,7 @@ function startListening() {
   stopSpeaking();
   const rec = new SpeechRecognition();
   recognition = rec;
-  rec.lang = "en-ZA"; rec.interimResults = true; rec.continuous = false;
+  rec.lang = recLang; rec.interimResults = true; rec.continuous = false;
   let finalText = "";
   rec.onstart = () => { setMic(true); setNote("Listening..."); };
   rec.onresult = (e) => {
@@ -233,6 +325,10 @@ function startListening() {
     els.text.value = (finalText + interim).trim();
   };
   rec.onerror = (e) => {
+    if (e.error === "no-speech") { explainNoSpeech(); return; }
+    if (e.error === "language-not-supported" && recLang !== "en-US") {
+      recLang = "en-US"; setNote("English (South Africa) is not supported here, switched to US English. Tap Mic again."); return;
+    }
     const msg = {
       "not-allowed": "Microphone blocked. Allow it in the browser, and use localhost or https.",
       "no-speech": "I didn't hear anything. Tap Mic and try again.",
@@ -259,8 +355,13 @@ els.form.addEventListener("submit", (e) => {
 $("act").addEventListener("click", runAction);
 els.mic.addEventListener("click", () => { recognition ? stopListening() : startListening(); });
 els.reset.addEventListener("click", () => { stopSpeaking(); stopListening(); setNote(""); resetUi(); });
+$("avatar").addEventListener("click", () => { avatar.wave(); });
+$("avatarOn").addEventListener("change", (e) => setAvatarVisible(e.target.checked));
+$("themeBtn").addEventListener("click", () => applyTheme(nextTheme()));
 els.voiceReplies.addEventListener("change", () => { if (!els.voiceReplies.checked) stopSpeaking(); });
 
 fetch("/voice/config").then((r) => r.json()).then((c) => { serverVoice = !!c.elevenlabs; }).catch(() => {});
 if (!SpeechRecognition) setNote("Voice input needs Chrome or Edge. You can still type.");
 resetUi();
+$("themeBtn").textContent = "Theme: " + currentTheme();
+setTimeout(() => avatar.wave(), 500);
