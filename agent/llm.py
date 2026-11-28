@@ -75,6 +75,28 @@ def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
     if re.search(r"\bhalf\s+a\s+SOL\b", message, re.IGNORECASE):
         updates["contribution_lamports"] = 500_000_000
 
+    # If the group name is missing, accept a standalone name as a reply.
+    # Do not mistake member-count or contribution updates for a name.
+    if current.group_name is None and "group_name" not in updates:
+        is_structured_update = bool(
+            re.search(
+                r"\b\d+\s+members?\b|"
+                r"\b\d+(?:\.\d+)?\s*SOL\b|"
+                r"\bhalf\s+a\s+SOL\b",
+                message,
+                re.IGNORECASE,
+            )
+        )
+
+        candidate = message.strip()
+
+        if (
+            candidate
+            and len(candidate) <= 60
+            and not is_structured_update
+        ):
+            updates["group_name"] = candidate
+
     # Merge existing information with newly extracted information.
     # model_validate ensures that all values are checked.
     return GroupSpec.model_validate({

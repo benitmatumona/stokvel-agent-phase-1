@@ -61,7 +61,7 @@ def test_complete_stokvel_configuration(client):
     first_response = client.post(
         "/chat",
         json={
-            "message": "Create a group with 8 members"
+            "message": "Create a stokvel called Savings Club with 8 members"
         },
     )
 
@@ -91,7 +91,7 @@ def test_approve_configuration_without_deploying(client):
     response = client.post(
         "/chat",
         json={
-            "message": "Create a group with 8 members contributing 0.25 SOL"
+            "message": "Create a stokvel called Savings Club with 8 members contributing 0.25 SOL"
         },
     )
 

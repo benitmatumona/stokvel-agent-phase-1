@@ -33,15 +33,24 @@ async def test_agent_preserves_information_between_messages():
         first["session_id"],
     )
 
-    assert second["state"] == "awaiting_approval"
-    assert second["group_spec"]["max_members"] == 10
-    assert second["group_spec"]["contribution_lamports"] == 500_000_000
+    assert second["state"] == "drafting"
+    assert "stokvel name" in second["missing_information"]
+
+    third = await process_message(
+        "Christmas Savings Club",
+        first["session_id"],
+    )
+
+    assert third["state"] == "awaiting_approval"
+    assert third["group_spec"]["group_name"] == "Christmas Savings Club"
+    assert third["group_spec"]["max_members"] == 10
+    assert third["group_spec"]["contribution_lamports"] == 500_000_000
 
 
 @pytest.mark.anyio
 async def test_agent_requires_explicit_approval():
     first = await process_message(
-        "Create a group with 10 members contributing 0.5 SOL"
+        "Create a stokvel called Savings Club with 10 members contributing 0.5 SOL"
     )
 
     assert first["state"] == "awaiting_approval"
@@ -59,7 +68,7 @@ async def test_agent_requires_explicit_approval():
 @pytest.mark.anyio
 async def test_agent_can_reject_configuration():
     first = await process_message(
-        "Create a group with 10 members contributing 0.5 SOL"
+        "Create a stokvel called Savings Club with 10 members contributing 0.5 SOL"
     )
 
     rejected = await process_message(
@@ -82,7 +91,7 @@ async def test_unknown_session_is_rejected():
 @pytest.mark.anyio
 async def test_approved_configuration_cannot_be_modified():
     first = await process_message(
-        "Create a group with 10 members contributing 0.5 SOL"
+        "Create a stokvel called Savings Club with 10 members contributing 0.5 SOL"
     )
 
     session_id = first["session_id"]
@@ -107,7 +116,7 @@ async def test_approved_configuration_cannot_be_modified():
 @pytest.mark.anyio
 async def test_agent_can_edit_configuration_before_approval():
     first = await process_message(
-        "Create a group with 10 members contributing 0.5 SOL"
+        "Create a stokvel called Savings Club with 10 members contributing 0.5 SOL"
     )
 
     session_id = first["session_id"]
@@ -127,7 +136,7 @@ async def test_agent_can_edit_configuration_before_approval():
 @pytest.mark.anyio
 async def test_configuration_edit_requires_fresh_approval():
     first = await process_message(
-        "Create a group with 10 members contributing 0.5 SOL"
+        "Create a stokvel called Savings Club with 10 members contributing 0.5 SOL"
     )
 
     session_id = first["session_id"]
@@ -147,7 +156,7 @@ async def test_configuration_edit_requires_fresh_approval():
 @pytest.mark.anyio
 async def test_rejected_configuration_can_be_revised_and_approved():
     first = await process_message(
-        "Create a group with 10 members contributing 0.5 SOL"
+        "Create a stokvel called Savings Club with 10 members contributing 0.5 SOL"
     )
 
     session_id = first["session_id"]
@@ -182,3 +191,50 @@ async def test_approval_summary_includes_group_name():
     assert result["state"] == "awaiting_approval"
     assert result["group_spec"]["group_name"] == "Christmas Savings Club"
     assert "Christmas Savings Club" in result["reply"]
+
+
+@pytest.mark.anyio
+async def test_agent_asks_for_missing_group_name():
+    result = await process_message(
+        "Create a stokvel with 10 members contributing 0.5 SOL"
+    )
+
+    assert result["state"] == "drafting"
+    assert "stokvel name" in result["missing_information"]
+    assert "name" in result["reply"].lower()
+    assert result["group_spec"]["max_members"] == 10
+    assert result["group_spec"]["contribution_lamports"] == 500_000_000
+
+
+@pytest.mark.anyio
+async def test_agent_asks_naturally_for_missing_group_name():
+    result = await process_message(
+        "Create a stokvel with 10 members contributing 0.5 SOL"
+    )
+
+    assert result["state"] == "drafting"
+    assert "what would you like to name" in result["reply"].lower()
+
+
+@pytest.mark.anyio
+async def test_agent_remembers_details_when_user_provides_group_name():
+    first = await process_message(
+        "Create a stokvel with 10 members contributing 0.5 SOL"
+    )
+
+    session_id = first["session_id"]
+
+    assert first["state"] == "drafting"
+    assert "stokvel name" in first["missing_information"]
+
+    second = await process_message(
+        "Christmas Savings Club",
+        session_id,
+    )
+
+    assert second["state"] == "awaiting_approval"
+    assert second["group_spec"]["group_name"] == "Christmas Savings Club"
+    assert second["group_spec"]["max_members"] == 10
+    assert second["group_spec"]["contribution_lamports"] == 500_000_000
+    assert "Christmas Savings Club" in second["reply"]
+    assert second["can_deploy"] is False

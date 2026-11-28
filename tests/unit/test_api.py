@@ -50,7 +50,7 @@ def test_complete_conversation_and_approval(client):
     first = client.post(
         "/chat",
         json={
-            "message": "Create a stokvel with 10 members"
+            "message": "Create a stokvel called Savings Club with 10 members"
         },
     )
 

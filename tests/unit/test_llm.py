@@ -217,3 +217,19 @@ def test_extract_complete_stokvel_details():
     assert spec.max_members == 10
     assert spec.contribution_lamports == 500_000_000
     assert spec.is_complete is True
+
+
+def test_fallback_extracts_standalone_name_when_name_is_missing():
+    current = GroupSpec(
+        max_members=10,
+        contribution_lamports=500_000_000,
+    )
+
+    spec = fallback_extract(
+        "Christmas Savings Club",
+        current,
+    )
+
+    assert spec.group_name == "Christmas Savings Club"
+    assert spec.max_members == 10
+    assert spec.contribution_lamports == 500_000_000

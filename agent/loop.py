@@ -8,6 +8,9 @@ from agent.store import get_session, save_session
 def missing_information(session: AgentSession) -> list[str]:
     missing = []
 
+    if session.spec.group_name is None:
+        missing.append("stokvel name")
+
     if session.spec.max_members is None:
         missing.append("number of members")
 
@@ -93,10 +96,16 @@ async def process_message(
         session.state = SessionState.DRAFTING
         save_session(session)
 
+        if "stokvel name" in missing:
+            reply = "What would you like to name your stokvel?"
+        else:
+            reply = f"I still need: {', '.join(missing)}."
+
         return {
             "session_id": session.session_id,
             "state": session.state.value,
-            "reply": f"I still need: {', '.join(missing)}.",
+            "group_spec": session.spec.model_dump(),
+            "reply": reply,
             "missing_information": missing,
             "can_deploy": False,
         }
