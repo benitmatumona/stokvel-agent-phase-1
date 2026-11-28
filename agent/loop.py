@@ -1,5 +1,7 @@
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from agent.llm import extract_group_spec
 from agent.session import AgentSession, SessionState
 from agent.store import get_session, save_session
@@ -86,8 +88,32 @@ async def process_message(
                 "can_deploy": False,
             }
 
-    # Extract information from the latest message.
-    session.spec = await extract_group_spec(message, session.spec)
+    # Extract information without replacing valid details on failure.
+    try:
+        updated_spec = await extract_group_spec(message, session.spec)
+    except ValidationError as exc:
+        errors = exc.errors()
+        error_message = (
+            errors[0]["msg"] if errors else "Invalid configuration."
+        )
+        error_message = error_message.removeprefix("Value error, ")
+
+        session.state = SessionState.DRAFTING
+        save_session(session)
+
+        return {
+            "session_id": session.session_id,
+            "state": session.state.value,
+            "group_spec": session.spec.model_dump(),
+            "reply": (
+                f"That detail is invalid: {error_message}. "
+                "Please provide a valid value."
+            ),
+            "missing_information": missing_information(session),
+            "can_deploy": False,
+        }
+
+    session.spec = updated_spec
 
     # Check which required details are still missing.
     missing = missing_information(session)

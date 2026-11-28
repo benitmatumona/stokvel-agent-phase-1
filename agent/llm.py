@@ -60,7 +60,7 @@ def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
         updates["max_members"] = int(member_match.group(1))
 
     contribution_match = re.search(
-        r"\b(\d+(?:\.\d+)?)\s*SOL\b",
+        r"(?<![\w.])(-?\d+(?:\.\d+)?)\s*SOL\b",
         message,
         re.IGNORECASE,
     )
@@ -75,13 +75,12 @@ def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
     if re.search(r"\bhalf\s+a\s+SOL\b", message, re.IGNORECASE):
         updates["contribution_lamports"] = 500_000_000
 
-    # If the group name is missing, accept a standalone name as a reply.
-    # Do not mistake member-count or contribution updates for a name.
+    # Accept standalone names, but reject conversational responses.
     if current.group_name is None and "group_name" not in updates:
         is_structured_update = bool(
             re.search(
                 r"\b\d+\s+members?\b|"
-                r"\b\d+(?:\.\d+)?\s*SOL\b|"
+                r"(?<![\w.])-?\d+(?:\.\d+)?\s*SOL\b|"
                 r"\bhalf\s+a\s+SOL\b",
                 message,
                 re.IGNORECASE,
@@ -89,11 +88,35 @@ def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
         )
 
         candidate = message.strip()
+        normalized_candidate = re.sub(
+            r"[.!?,]+$",
+            "",
+            candidate,
+        ).strip().casefold()
+
+        ambiguous_responses = {
+            "hello",
+            "hi",
+            "hey",
+            "i don't know",
+            "i do not know",
+            "maybe",
+            "not sure",
+            "i'm not sure",
+            "im not sure",
+            "okay",
+            "ok",
+            "yes",
+            "no",
+            "thanks",
+            "thank you",
+        }
 
         if (
             candidate
             and len(candidate) <= 60
             and not is_structured_update
+            and normalized_candidate not in ambiguous_responses
         ):
             updates["group_name"] = candidate
 

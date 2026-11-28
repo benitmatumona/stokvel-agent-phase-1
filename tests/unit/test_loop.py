@@ -238,3 +238,35 @@ async def test_agent_remembers_details_when_user_provides_group_name():
     assert second["group_spec"]["contribution_lamports"] == 500_000_000
     assert "Christmas Savings Club" in second["reply"]
     assert second["can_deploy"] is False
+
+
+@pytest.mark.anyio
+async def test_agent_rejects_ambiguous_name_and_preserves_details():
+    first = await process_message(
+        "Create a stokvel with 10 members contributing 0.5 SOL"
+    )
+
+    session_id = first["session_id"]
+
+    assert first["state"] == "drafting"
+
+    second = await process_message(
+        "hello",
+        session_id,
+    )
+
+    assert second["state"] == "drafting"
+    assert second["group_spec"]["group_name"] is None
+    assert second["group_spec"]["max_members"] == 10
+    assert second["group_spec"]["contribution_lamports"] == 500_000_000
+    assert "name" in second["reply"].lower()
+
+    third = await process_message(
+        "Christmas Savings Club",
+        session_id,
+    )
+
+    assert third["state"] == "awaiting_approval"
+    assert third["group_spec"]["group_name"] == "Christmas Savings Club"
+    assert third["group_spec"]["max_members"] == 10
+    assert third["group_spec"]["contribution_lamports"] == 500_000_000
