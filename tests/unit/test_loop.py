@@ -78,3 +78,27 @@ async def test_unknown_session_is_rejected():
     )
 
     assert "error" in result
+
+@pytest.mark.anyio
+async def test_approved_configuration_cannot_be_modified():
+    first = await process_message(
+        "Create a group with 10 members contributing 0.5 SOL"
+    )
+
+    session_id = first["session_id"]
+
+    approved = await process_message(
+        "approve",
+        session_id,
+    )
+
+    assert approved["state"] == "approved"
+
+    follow_up = await process_message(
+        "Actually make it 12 members",
+        session_id,
+    )
+
+    assert follow_up["state"] == "approved"
+    assert follow_up["group_spec"]["max_members"] == 10
+    assert follow_up["group_spec"]["contribution_lamports"] == 500_000_000

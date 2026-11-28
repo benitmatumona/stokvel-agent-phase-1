@@ -7,6 +7,7 @@ from agent.spec import GroupSpec
 from agent.llm import fallback_extract
 from agent.spec import GroupSpec
 
+from pydantic import ValidationError
 
 def test_extract_member_count():
     spec = fallback_extract(
@@ -53,6 +54,90 @@ def test_missing_information_is_not_invented():
 @pytest.mark.anyio
 async def test_missing_api_key_uses_fallback(monkeypatch):
     monkeypatch.setattr("agent.llm.GROQ_API_KEY", None)
+
+    spec = await extract_group_spec(
+        "Create a group with 8 members contributing 0.25 SOL",
+        GroupSpec(),
+    )
+
+    assert spec.max_members == 8
+    assert spec.contribution_lamports == 250_000_000
+
+
+class FakeAsyncClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def post(self, *args, **kwargs):
+        import httpx
+        raise httpx.TimeoutException("Simulated timeout")
+
+
+@pytest.mark.anyio
+async def test_groq_timeout_uses_fallback(monkeypatch):
+    monkeypatch.setattr("agent.llm.GROQ_API_KEY", "fake-test-key")
+    monkeypatch.setattr("agent.llm.httpx.AsyncClient", FakeAsyncClient)
+
+    spec = await extract_group_spec(
+        "Create a group with 8 members contributing 0.25 SOL",
+        GroupSpec(),
+    )
+
+    assert spec.max_members == 8
+    assert spec.contribution_lamports == 250_000_000
+
+def test_fallback_rejects_invalid_group_size():
+    with pytest.raises(ValidationError):
+        fallback_extract(
+            "Create a group with 100 members",
+            GroupSpec(),
+        )
+
+class FakeInvalidResponse:
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"group_name": "Ubuntu Savings", '
+                            '"max_members": 100}'
+                        )
+                    }
+                }
+            ]
+        }
+
+
+class FakeInvalidResponseClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def post(self, *args, **kwargs):
+        return FakeInvalidResponse()
+
+@pytest.mark.anyio
+async def test_invalid_groq_data_uses_fallback(monkeypatch):
+    monkeypatch.setattr("agent.llm.GROQ_API_KEY", "fake-test-key")
+    monkeypatch.setattr(
+        "agent.llm.httpx.AsyncClient",
+        FakeInvalidResponseClient,
+    )
 
     spec = await extract_group_spec(
         "Create a group with 8 members contributing 0.25 SOL",

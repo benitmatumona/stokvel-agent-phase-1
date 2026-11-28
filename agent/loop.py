@@ -40,6 +40,21 @@ async def process_message(
     # Handle explicit approval separately from ordinary extraction.
     normalized = message.strip().lower()
 
+    # Approved configurations are locked.
+    if session.state == SessionState.APPROVED:
+        return {
+            "session_id": session.session_id,
+            "state": session.state.value,
+            "group_spec": session.spec.model_dump(),
+            "reply": (
+                "This configuration has already been approved "
+                "and is now locked. Start a new session to create "
+                "a different configuration."
+            ),
+            "can_deploy": False,
+        }
+
+
     if session.state == SessionState.AWAITING_APPROVAL:
         if normalized in {"yes", "yes, approve", "approve", "i approve"}:
             session.state = SessionState.APPROVED
