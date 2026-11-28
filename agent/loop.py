@@ -1,3 +1,4 @@
+import re
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -22,6 +23,22 @@ def missing_information(session: AgentSession) -> list[str]:
     return missing
 
 
+# Speech-to-text returns "Yes." or "Yes, go ahead." so replies are normalised
+# before matching. Matching is still exact against a small set: "yes but make
+# it 12 members" must NOT approve.
+APPROVE_PHRASES = {
+    "yes", "yes approve", "approve", "i approve", "approved", "yes i approve",
+    "yes please", "yes go ahead", "go ahead", "yeah", "yep",
+    "looks good", "yes looks good", "that looks good", "sounds good",
+}
+REJECT_PHRASES = {"no", "no cancel", "cancel", "reject", "nope", "no thanks"}
+
+
+def normalize_reply(message: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9' ]+", " ", message.lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def format_lamports(lamports: int) -> str:
     sol = lamports / 1_000_000_000
     return f"{sol:g} SOL"
@@ -43,7 +60,7 @@ async def process_message(
         session = AgentSession(session_id=str(uuid4()))
 
     # Handle explicit approval separately from ordinary extraction.
-    normalized = message.strip().lower()
+    normalized = normalize_reply(message)
 
     # Approved configurations are locked.
     if session.state == SessionState.APPROVED:
@@ -61,7 +78,7 @@ async def process_message(
 
 
     if session.state == SessionState.AWAITING_APPROVAL:
-        if normalized in {"yes", "yes, approve", "approve", "i approve"}:
+        if normalized in APPROVE_PHRASES:
             session.state = SessionState.APPROVED
             session.explicit_approval = True
             save_session(session)
@@ -76,7 +93,7 @@ async def process_message(
                 "can_deploy": False,
             }
 
-        if normalized in {"no", "no, cancel", "cancel", "reject"}:
+        if normalized in REJECT_PHRASES:
             session.state = SessionState.DRAFTING
             session.explicit_approval = False
             save_session(session)
