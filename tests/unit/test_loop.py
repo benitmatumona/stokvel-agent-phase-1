@@ -102,3 +102,71 @@ async def test_approved_configuration_cannot_be_modified():
     assert follow_up["state"] == "approved"
     assert follow_up["group_spec"]["max_members"] == 10
     assert follow_up["group_spec"]["contribution_lamports"] == 500_000_000
+
+
+@pytest.mark.anyio
+async def test_agent_can_edit_configuration_before_approval():
+    first = await process_message(
+        "Create a group with 10 members contributing 0.5 SOL"
+    )
+
+    session_id = first["session_id"]
+
+    updated = await process_message(
+        "Actually make it 12 members",
+        session_id,
+    )
+
+    assert updated["state"] == "awaiting_approval"
+    assert updated["group_spec"]["max_members"] == 12
+    assert updated["group_spec"]["contribution_lamports"] == 500_000_000
+    assert updated["can_deploy"] is False
+    assert "approve" in updated["reply"].lower()
+
+
+@pytest.mark.anyio
+async def test_configuration_edit_requires_fresh_approval():
+    first = await process_message(
+        "Create a group with 10 members contributing 0.5 SOL"
+    )
+
+    session_id = first["session_id"]
+
+    updated = await process_message(
+        "Actually make it 12 members",
+        session_id,
+    )
+
+    session = SESSIONS[session_id]
+
+    assert updated["state"] == "awaiting_approval"
+    assert session.explicit_approval is False
+    assert updated["can_deploy"] is False
+
+
+@pytest.mark.anyio
+async def test_rejected_configuration_can_be_revised_and_approved():
+    first = await process_message(
+        "Create a group with 10 members contributing 0.5 SOL"
+    )
+
+    session_id = first["session_id"]
+
+    rejected = await process_message("no", session_id)
+
+    assert rejected["state"] == "drafting"
+
+    revised = await process_message(
+        "Actually make it 12 members",
+        session_id,
+    )
+
+    assert revised["state"] == "awaiting_approval"
+    assert revised["group_spec"]["max_members"] == 12
+    assert revised["group_spec"]["contribution_lamports"] == 500_000_000
+
+    approved = await process_message("approve", session_id)
+
+    assert approved["state"] == "approved"
+    assert approved["can_deploy"] is False
+    assert SESSIONS[session_id].explicit_approval is True
