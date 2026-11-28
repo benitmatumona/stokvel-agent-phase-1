@@ -110,12 +110,15 @@ async def process_message(
         session.spec.contribution_lamports
     )
 
+    group_name = session.spec.group_name or "your stokvel"
+
     return {
         "session_id": session.session_id,
         "state": session.state.value,
         "group_spec": session.spec.model_dump(),
         "reply": (
-            f"Your stokvel will have {session.spec.max_members} members, "
+            f"Let's review {group_name}. "
+            f"It will have {session.spec.max_members} members, "
             f"each contributing {contribution}. "
             "Do you approve this configuration?"
         ),

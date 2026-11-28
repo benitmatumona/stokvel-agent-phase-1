@@ -170,3 +170,15 @@ async def test_rejected_configuration_can_be_revised_and_approved():
     assert approved["state"] == "approved"
     assert approved["can_deploy"] is False
     assert SESSIONS[session_id].explicit_approval is True
+
+
+@pytest.mark.anyio
+async def test_approval_summary_includes_group_name():
+    result = await process_message(
+        "Create a stokvel called Christmas Savings Club "
+        "with 10 members contributing 0.5 SOL"
+    )
+
+    assert result["state"] == "awaiting_approval"
+    assert result["group_spec"]["group_name"] == "Christmas Savings Club"
+    assert "Christmas Savings Club" in result["reply"]
