@@ -88,3 +88,9 @@ def test_tts_provider_failure_returns_502(client, monkeypatch):
     monkeypatch.setattr(main, "ELEVENLABS_API_KEY", "test-key")
     monkeypatch.setattr(main.httpx, "AsyncClient", _fake_client([], fail=True))
     assert client.post("/tts", json={"text": "hello"}).status_code == 502
+
+
+def test_avatar_assets_and_markup_are_served(client):
+    page = client.get("/").text
+    assert 'id="avatar"' in page and 'id="av-mouth"' in page and 'id="themeBtn"' in page
+    assert client.get("/avatar.js").status_code == 200

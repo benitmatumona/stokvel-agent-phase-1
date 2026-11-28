@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Stokvel by Voice</title>
   <link rel="stylesheet" href="/style.css">
+  <script>try { var t = localStorage.getItem("stokvel-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
   <main class="app">
@@ -53,10 +54,42 @@
     <div class="toggles">
       <label><input type="checkbox" id="voiceReplies" checked> Voice replies</label>
       <label><input type="checkbox" id="handsFree"> Hands-free</label>
+      <label><input type="checkbox" id="avatarOn" checked> Assistant</label>
+      <button type="button" id="themeBtn" class="link">Theme: auto</button>
       <button type="button" id="reset" class="link">New group</button>
     </div>
     <p id="note" class="note" role="status"></p>
   </main>
+
+  <button type="button" id="avatar" class="avatar" aria-label="Your assistant. Tap to say hi."
+          data-mood="smile" data-speaking="false" data-wave="false" data-listening="false" data-thinking="false">
+    <svg viewBox="0 0 150 180" aria-hidden="true" focusable="false">
+      <g class="bob">
+        <circle class="ring" cx="70" cy="62" r="46"/>
+        <g id="av-arm" class="arm">
+          <path class="sleeve" d="M108 130 L126 166"/>
+          <g transform="rotate(155 128 170)">
+            <circle class="skin" cx="128" cy="170" r="8"/>
+            <path class="strand" d="M123 164 L121 156 M128 162 L128 153 M133 164 L135 156"/>
+          </g>
+        </g>
+        <rect class="skin" x="60" y="94" width="20" height="22"/>
+        <path class="shirt" d="M18 180 Q18 114 70 108 Q122 114 122 180 Z"/>
+        <circle class="skin" cx="70" cy="62" r="38"/>
+        <path class="hair" d="M31 60 Q28 18 70 20 Q112 18 109 60 Q98 38 70 38 Q42 38 31 60 Z"/>
+        <path class="strand" d="M34 70 Q28 84 35 94 M38 72 Q34 84 40 92"/>
+        <circle class="cheek" cx="46" cy="74" r="5"/>
+        <circle class="cheek" cx="94" cy="74" r="5"/>
+        <path class="brows" d="M47 51 Q55 46 63 50 M77 50 Q85 46 93 51"/>
+        <g class="eyes">
+          <ellipse class="ink" cx="55" cy="62" rx="3.6" ry="4.6"/>
+          <ellipse class="ink" cx="85" cy="62" rx="3.6" ry="4.6"/>
+        </g>
+        <path id="av-mouth" class="mouth" d="M54 78 Q70 92 86 78"/>
+      </g>
+    </svg>
+  </button>
+  <script src="/avatar.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>
