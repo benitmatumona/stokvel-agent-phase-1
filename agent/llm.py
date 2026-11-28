@@ -34,6 +34,22 @@ Rules:
 def fallback_extract(message: str, current: GroupSpec) -> GroupSpec:
     updates = {}
 
+    # Extract the group name from common natural-language patterns.
+    name_patterns = [
+        r"\b(?:called|named)\s+(.+?)(?=\s+with\s+\d+\s+members?\b|[,.;]|$)",
+        r"\b(?:group\s+name|name)\s+is\s+(.+?)(?=\s+with\s+\d+\s+members?\b|[,.;]|$)",
+    ]
+
+    for pattern in name_patterns:
+        name_match = re.search(pattern, message, re.IGNORECASE)
+
+        if name_match:
+            group_name = name_match.group(1).strip().strip(chr(34) + chr(39))
+
+            if group_name:
+                updates["group_name"] = group_name
+                break
+
     member_match = re.search(
         r"\b(\d+)\s+members?\b",
         message,

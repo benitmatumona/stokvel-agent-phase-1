@@ -146,3 +146,74 @@ async def test_invalid_groq_data_uses_fallback(monkeypatch):
 
     assert spec.max_members == 8
     assert spec.contribution_lamports == 250_000_000
+
+
+def test_extract_group_name_with_called():
+    spec = fallback_extract(
+        "Create a stokvel called Christmas Savings Club",
+        GroupSpec(),
+    )
+
+    assert spec.group_name == "Christmas Savings Club"
+
+
+def test_extract_group_name_with_group_name_is():
+    spec = fallback_extract(
+        "Our group name is Ubuntu Savings",
+        GroupSpec(),
+    )
+
+    assert spec.group_name == "Ubuntu Savings"
+
+
+def test_preserve_existing_group_name():
+    current = GroupSpec(group_name="December Contributors")
+
+    spec = fallback_extract(
+        "Everyone contributes 0.5 SOL",
+        current,
+    )
+
+    assert spec.group_name == "December Contributors"
+
+
+def test_extract_group_name_with_called():
+    spec = fallback_extract(
+        "Create a stokvel called Christmas Savings Club",
+        GroupSpec(),
+    )
+
+    assert spec.group_name == "Christmas Savings Club"
+
+
+def test_extract_group_name_with_group_name_is():
+    spec = fallback_extract(
+        "Our group name is Ubuntu Savings",
+        GroupSpec(),
+    )
+
+    assert spec.group_name == "Ubuntu Savings"
+
+
+def test_preserve_existing_group_name():
+    current = GroupSpec(group_name="December Contributors")
+
+    spec = fallback_extract(
+        "Everyone contributes 0.5 SOL",
+        current,
+    )
+
+    assert spec.group_name == "December Contributors"
+
+
+def test_extract_complete_stokvel_details():
+    spec = fallback_extract(
+        "Create a stokvel called Christmas Savings Club "
+        "with 10 members contributing 0.5 SOL each",
+        GroupSpec(),
+    )
+
+    assert spec.group_name == "Christmas Savings Club"
+    assert spec.max_members == 10
+    assert spec.contribution_lamports == 500_000_000
+    assert spec.is_complete is True
